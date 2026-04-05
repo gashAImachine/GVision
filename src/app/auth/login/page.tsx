@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
@@ -9,6 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const supabase = createClient();
+  const router = useRouter();
 
   const [password, setPassword] = useState("");
 
@@ -25,7 +27,8 @@ export default function LoginPage() {
     if (error) {
       setMessage(error.message);
     } else {
-      window.location.href = "/dashboard";
+      router.push("/dashboard");
+      router.refresh();
     }
     setLoading(false);
   };
