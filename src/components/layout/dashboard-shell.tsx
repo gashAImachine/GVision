@@ -11,52 +11,50 @@ const navSections = [
   {
     title: null,
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: "grid" },
-      { label: "Log Incident", href: "/dashboard/log", icon: "plus" },
-      { label: "Incidents", href: "/dashboard/incidents", icon: "alert" },
+      { label: "Home", href: "/dashboard", icon: "home" },
+      { label: "Analytics", href: "/dashboard/analytics", icon: "chart" },
     ],
   },
   {
     title: "Operations",
     items: [
       { label: "Room Map", href: "/dashboard/rooms", icon: "map" },
-      { label: "Tasks", href: "/dashboard/tasks", icon: "tasks" },
-      { label: "Departments", href: "/dashboard/departments", icon: "dept" },
+      { label: "Incidents", href: "/dashboard/incidents", icon: "alert" },
+      { label: "Log Incident", href: "/dashboard/log", icon: "plus" },
+      { label: "Reports", href: "/dashboard/reports", icon: "document" },
     ],
   },
   {
     title: "Intelligence",
     items: [
-      { label: "Reports", href: "/dashboard/reports", icon: "chart" },
-      { label: "Daily Briefing", href: "/dashboard/briefing", icon: "email" },
-      { label: "Compensation", href: "/dashboard/compensation", icon: "dollar" },
+      { label: "Daily Briefing", href: "/dashboard/briefing", icon: "briefing" },
+      { label: "Departments", href: "/dashboard/departments", icon: "dept" },
     ],
   },
   {
     title: "Admin",
     items: [
-      { label: "Import Data", href: "/dashboard/import", icon: "upload" },
+      { label: "Upload Data", href: "/dashboard/import", icon: "upload" },
       { label: "Settings", href: "/dashboard/settings", icon: "settings" },
     ],
   },
 ];
 
-// Simple icon components (will swap for Lucide later)
+// Simple icon components (emoji-based, no external icon library)
 function NavIcon({ icon }: { icon: string }) {
   const icons: Record<string, string> = {
-    grid: "⊞",
-    plus: "＋",
-    alert: "⚡",
-    dollar: "💰",
-    map: "◫",
-    chart: "📊",
-    upload: "⬆",
-    settings: "⚙",
-    tasks: "☑",
-    dept: "👥",
-    email: "📧",
+    home: "â",
+    chart: "ð",
+    alert: "â¡",
+    plus: "ï¼",
+    map: "â«",
+    document: "ð",
+    briefing: "ð",
+    dept: "ð¥",
+    upload: "â¬",
+    settings: "â",
   };
-  return <span className="text-base">{icons[icon] || "•"}</span>;
+  return <span className="text-base">{icons[icon] || "â¢"}</span>;
 }
 
 interface DashboardShellProps {
@@ -170,7 +168,7 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
             onClick={() => setSidebarOpen(true)}
             className="text-night-400 hover:text-white"
           >
-            <span className="text-xl">☰</span>
+            <span className="text-xl">â°</span>
           </button>
         </header>
 
