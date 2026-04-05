@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
@@ -9,10 +8,8 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const supabase = createClient();
-  const router = useRouter();
-
   const [password, setPassword] = useState("");
+  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,11 +23,11 @@ export default function LoginPage() {
 
     if (error) {
       setMessage(error.message);
+      setLoading(false);
     } else {
-      router.push("/dashboard");
-      router.refresh();
+      // Hard redirect to ensure cookies are sent with the new page request
+      window.location.href = "/dashboard";
     }
-    setLoading(false);
   };
 
   return (
