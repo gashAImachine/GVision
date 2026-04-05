@@ -1,498 +1,364 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { useSupabase } from "@/hooks/use-supabase";
+import { useState, useEffect, useMemo } from 'react';
+import { loadIncidents, Incident, SEVERITY_BADGE, formatTime } from '@/lib/incidents-data';
 
-type Incident = {
-  id: string;
-  incident_date: string;
-  incident_time: string;
-  title: string;
-  room_code: string;
-  incident_type: string;
-  severity: "low" | "medium" | "high";
-  status: "open" | "in_progress" | "resolved" | "closed";
-  is_escalated: boolean;
-  primary_department: string;
-  details?: string;
-  notes?: Array<{ id: string; text: string; timestamp: string }>;
-  site?: string;
-};
+type SortField = 'date' | 'time' | 'site' | 'room_number' | 'incident_type' | 'issue_summary' | 'severity' | 'escalation' | 'primary_department' | 'primary_impact' | 'root_cause';
+type SortOrder = 'asc' | 'desc';
 
-// ─── Demo incidents (shown when no real data yet) ───
-const DEMO_INCIDENTS: Incident[] = Array.from({ length: 40 }, (_, i) => {
-  const types = ["Maintenance", "Housekeeping", "IT", "Noise", "Safety", "Guest Behaviour", "Guest dissatisfaction", "Transport", "Alarm", "Other"];
-  const severities: Array<"low" | "medium" | "high"> = ["low", "medium", "high"];
-  const statuses: Array<"open" | "in_progress" | "resolved" | "closed"> = ["open", "in_progress", "resolved", "closed"];
-  const rooms = ["R0812", "R0604", "R1015", "R0307", "R0519", "R1408", "R0203", "R0916", "B0043", "T0214"];
-  const titles = [
-    "AC not cooling", "Noise complaint Floor 8", "WiFi not working", "Smoke alarm triggered",
-    "Towels not replenished", "Guest intoxicated at pool", "TV remote broken", "Buggy tyre flat",
-    "Safelock battery dead", "Blocked toilet", "Hot water not working", "Fridge leaking",
-    "Loud music from R0605", "Cockroach in bathroom", "Power outage wing A", "Door lock jammed",
-    "Guest requesting refund", "Elevator stuck Floor 3", "Bleach smell in room", "Fire alarm false trigger",
-  ];
-
-  const day = Math.floor(Math.random() * 28) + 1;
-  const month = Math.floor(Math.random() * 3) + 1;
-  const hour = Math.floor(Math.random() * 24);
-  const min = Math.floor(Math.random() * 60);
-  const sev = severities[i < 5 ? 2 : i < 15 ? 1 : 0];
-  const stat = i < 8 ? statuses[Math.floor(Math.random() * 2)] : statuses[2 + Math.floor(Math.random() * 2)];
-
-  return {
-    id: `demo-${i}`,
-    incident_date: `2026-0${month}-${day.toString().padStart(2, "0")}`,
-    incident_time: `${hour.toString().padStart(2, "0")}${min.toString().padStart(2, "0")}`,
-    title: titles[i % titles.length],
-    room_code: rooms[i % rooms.length],
-    incident_type: types[i % types.length],
-    severity: sev,
-    status: stat,
-    is_escalated: i % 5 === 0,
-    primary_department: ["Maintenance", "Housekeeping", "IT", "Security", "Front Office", "Transport"][i % 6],
-    site: ["Main Building", "Wing A", "Wing B", "Annex"][i % 4],
-    details: `Incident reported on ${month}/${day} at ${hour}:${min.toString().padStart(2, "0")}. Details: ${titles[i % titles.length]} reported in room ${rooms[i % rooms.length]}. Requires attention from ${["Maintenance", "Housekeeping", "IT", "Security", "Front Office", "Transport"][i % 6]}.`,
-    notes: [
-      { id: `note-${i}-1`, text: "Initial report received", timestamp: "2026-04-05 10:30" },
-      { id: `note-${i}-2`, text: "Staff assigned to investigate", timestamp: "2026-04-05 10:45" },
-    ],
-  };
-});
-
-const SEVERITY_BADGE: Record<string, string> = {
-  high: "bg-red-500/15 text-red-400",
-  medium: "bg-yellow-500/15 text-yellow-400",
-  low: "bg-green-500/15 text-green-400",
-};
-
-const STATUS_BADGE: Record<string, string> = {
-  open: "bg-orange-500/15 text-orange-400",
-  in_progress: "bg-blue-500/15 text-blue-400",
-  resolved: "bg-green-500/15 text-green-400",
-  closed: "bg-night-500/15 text-night-400",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  open: "Open",
-  in_progress: "In Progress",
-  resolved: "Resolved",
-  closed: "Closed",
-};
+const INCIDENTS_PER_PAGE = 50;
 
 export default function IncidentsPage() {
-  const supabase = useSupabase();
-  const [incidents, setIncidents] = useState<Incident[]>(DEMO_INCIDENTS);
-  const [isDemo, setIsDemo] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('All');
+  const [siteFilter, setSiteFilter] = useState('All');
+  const [departmentFilter, setDepartmentFilter] = useState('All');
+  const [yearFilter, setYearFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [loading, setLoading] = useState(true);
 
-  // Filters
-  const [filterType, setFilterType] = useState("all");
-  const [filterSeverity, setFilterSeverity] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [search, setSearch] = useState("");
-
-  // Detail panel
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [incidentStatus, setIncidentStatus] = useState<"open" | "in_progress" | "resolved" | "closed">("open");
-  const [notes, setNotes] = useState<Array<{ id: string; text: string; timestamp: string }>>([]);
-  const [noteInput, setNoteInput] = useState("");
-  const [isEscalated, setIsEscalated] = useState(false);
-
-  const loadIncidents = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      setLoading(true);
-      let query = supabase
-        .from("incidents")
-        .select("*")
-        .order("incident_date", { ascending: false })
-        .order("incident_time", { ascending: false })
-        .limit(200);
-
-      if (filterType !== "all") query = query.eq("incident_type", filterType);
-      if (filterSeverity !== "all") query = query.eq("severity", filterSeverity);
-      if (filterStatus !== "all") query = query.eq("status", filterStatus);
-
-      const { data } = await query;
-      if (data && data.length > 0) {
-        setIncidents(data);
-        setIsDemo(false);
-      }
-    } catch {
-      // Use demo data
-    }
-    setLoading(false);
-  }, [supabase, filterType, filterSeverity, filterStatus]);
-
+  // Load incidents
   useEffect(() => {
-    loadIncidents();
-  }, [loadIncidents]);
-
-  // Client-side search filter
-  const filtered = incidents.filter((inc) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      inc.title?.toLowerCase().includes(s) ||
-      inc.room_code?.toLowerCase().includes(s) ||
-      inc.incident_type?.toLowerCase().includes(s)
-    );
-  });
-
-  const types = [...new Set(incidents.map((i) => i.incident_type))].sort();
-
-  // Handle opening detail panel
-  const handleSelectIncident = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setIncidentStatus(incident.status);
-    setNotes(incident.notes || []);
-    setIsEscalated(incident.is_escalated);
-    setNoteInput("");
-  };
-
-  // Handle closing detail panel
-  const handleClosePanel = () => {
-    setSelectedIncident(null);
-    setNoteInput("");
-  };
-
-  // Handle adding a note
-  const handleAddNote = () => {
-    if (!noteInput.trim()) return;
-
-    const now = new Date();
-    const timestamp = now.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    const newNote = {
-      id: `note-${Date.now()}`,
-      text: noteInput,
-      timestamp,
+    const loadData = async () => {
+      const data = await loadIncidents();
+      setIncidents(data);
+      setLoading(false);
     };
+    loadData();
+  }, []);
 
-    setNotes([...notes, newNote]);
-    setNoteInput("");
+  // Get unique values for filters
+  const allSites = useMemo(() => {
+    const sites = new Set(incidents.map((inc) => inc.site));
+    return Array.from(sites).sort();
+  }, [incidents]);
 
-    // Update the incident in the list
-    if (selectedIncident) {
-      const updated = {
-        ...selectedIncident,
-        notes: [...notes, newNote],
-      };
-      setIncidents((prev) =>
-        prev.map((inc) => (inc.id === selectedIncident.id ? updated : inc))
-      );
-      setSelectedIncident(updated);
+  const allDepartments = useMemo(() => {
+    const depts = new Set(incidents.map((inc) => inc.primary_department));
+    return Array.from(depts).sort();
+  }, [incidents]);
+
+  const allYears = useMemo(() => {
+    const years = new Set(incidents.map((inc) => inc.date.substring(0, 4)));
+    return Array.from(years).sort().reverse();
+  }, [incidents]);
+
+  // Apply filters
+  const filtered = useMemo(() => {
+    return incidents.filter((inc) => {
+      // Search filter
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch =
+        inc.room_number.toLowerCase().includes(searchLower) ||
+        inc.incident_type.toLowerCase().includes(searchLower) ||
+        inc.site.toLowerCase().includes(searchLower) ||
+        inc.issue_summary.toLowerCase().includes(searchLower);
+
+      if (!matchesSearch) return false;
+
+      // Severity filter
+      if (severityFilter !== 'All' && inc.severity !== severityFilter) return false;
+
+      // Site filter
+      if (siteFilter !== 'All' && inc.site !== siteFilter) return false;
+
+      // Department filter
+      if (departmentFilter !== 'All' && inc.primary_department !== departmentFilter) return false;
+
+      // Year filter
+      if (yearFilter !== 'All' && !inc.date.startsWith(yearFilter)) return false;
+
+      return true;
+    });
+  }, [incidents, searchTerm, severityFilter, siteFilter, departmentFilter, yearFilter]);
+
+  // Apply sorting
+  const sorted = useMemo(() => {
+    const copy = [...filtered];
+    copy.sort((a, b) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+
+      // Handle numeric sorting for dates
+      if (sortField === 'date') {
+        aVal = a.date;
+        bVal = b.date;
+      }
+
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return copy;
+  }, [filtered, sortField, sortOrder]);
+
+  // Paginate
+  const totalPages = Math.ceil(sorted.length / INCIDENTS_PER_PAGE);
+  const paginatedIncidents = sorted.slice(
+    (currentPage - 1) * INCIDENTS_PER_PAGE,
+    currentPage * INCIDENTS_PER_PAGE
+  );
+
+  // Count stats
+  const highSeverityCount = filtered.filter((inc) => inc.severity === 'High').length;
+  const escalatedCount = filtered.filter((inc) => inc.escalation === 'Yes').length;
+
+  // Handle column click for sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
     }
+    setCurrentPage(1);
   };
 
-  // Handle status change
-  const handleStatusChange = (newStatus: "open" | "in_progress" | "resolved" | "closed") => {
-    setIncidentStatus(newStatus);
-
-    if (selectedIncident) {
-      const updated = {
-        ...selectedIncident,
-        status: newStatus,
-      };
-      setIncidents((prev) =>
-        prev.map((inc) => (inc.id === selectedIncident.id ? updated : inc))
-      );
-      setSelectedIncident(updated);
-    }
-  };
-
-  // Handle mark resolved
-  const handleMarkResolved = () => {
-    handleStatusChange("resolved");
-  };
-
-  // Handle escalate
-  const handleEscalate = () => {
-    const newEscalated = !isEscalated;
-    setIsEscalated(newEscalated);
-
-    if (selectedIncident) {
-      const updated = {
-        ...selectedIncident,
-        is_escalated: newEscalated,
-      };
-      setIncidents((prev) =>
-        prev.map((inc) => (inc.id === selectedIncident.id ? updated : inc))
-      );
-      setSelectedIncident(updated);
-    }
-  };
+  if (loading) {
+    return <div className="p-8 text-night-300">Loading incidents...</div>;
+  }
 
   return (
-    <div className="space-y-6 relative">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Incidents</h1>
-          <p className="text-night-400 mt-1">
-            {filtered.length} incidents {isDemo ? "(demo data)" : ""}
-          </p>
+    <div className="space-y-6 p-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-night-50">Incidents</h1>
+        <p className="mt-2 text-night-400">All 2,404 recorded incidents</p>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="rounded-lg bg-night-900/50 border border-night-700 p-4">
+          <div className="text-sm text-night-400">Total Matching</div>
+          <div className="text-2xl font-bold text-night-50">{filtered.length}</div>
         </div>
-        <a
-          href="/dashboard/log"
-          className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium transition-colors"
-        >
-          + Log New
-        </a>
+        <div className="rounded-lg bg-night-900/50 border border-night-700 p-4">
+          <div className="text-sm text-night-400">High Severity</div>
+          <div className="text-2xl font-bold text-red-400">{highSeverityCount}</div>
+        </div>
+        <div className="rounded-lg bg-night-900/50 border border-night-700 p-4">
+          <div className="text-sm text-night-400">Escalated</div>
+          <div className="text-2xl font-bold text-orange-400">{escalatedCount}</div>
+        </div>
+        <div className="rounded-lg bg-night-900/50 border border-night-700 p-4">
+          <div className="text-sm text-night-400">Page</div>
+          <div className="text-2xl font-bold text-night-50">{currentPage} of {totalPages || 1}</div>
+        </div>
       </div>
 
-      {/* ─── Filters ─── */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by title, room, type..."
-          className="px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white placeholder:text-night-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 min-w-[220px]"
-        />
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-        >
-          <option value="all">All Types</option>
-          {types.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-        <select
-          value={filterSeverity}
-          onChange={(e) => setFilterSeverity(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-        >
-          <option value="all">All Severity</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-        >
-          <option value="all">All Status</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="resolved">Resolved</option>
-          <option value="closed">Closed</option>
-        </select>
+      {/* Search and Filters */}
+      <div className="space-y-4 rounded-lg bg-night-900/50 border border-night-700 p-6">
+        {/* Search Box */}
+        <div>
+          <label className="block text-sm font-medium text-night-300 mb-2">Search</label>
+          <input
+            type="text"
+            placeholder="Room, type, site, issue..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full px-4 py-2 bg-night-800 border border-night-600 rounded text-night-50 placeholder-night-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+
+        {/* Filter Row */}
+        <div className="grid grid-cols-4 gap-4">
+          {/* Severity */}
+          <div>
+            <label className="block text-sm font-medium text-night-300 mb-2">Severity</label>
+            <select
+              value={severityFilter}
+              onChange={(e) => {
+                setSeverityFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-4 py-2 bg-night-800 border border-night-600 rounded text-night-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option>All</option>
+              <option>Low</option>
+              <option>Medium</option>
+              <option>High</option>
+            </select>
+          </div>
+
+          {/* Site */}
+          <div>
+            <label className="block text-sm font-medium text-night-300 mb-2">Site</label>
+            <select
+              value={siteFilter}
+              onChange={(e) => {
+                setSiteFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-4 py-2 bg-night-800 border border-night-600 rounded text-night-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option>All</option>
+              {allSites.map((site) => (
+                <option key={site} value={site}>
+                  {site}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Department */}
+          <div>
+            <label className="block text-sm font-medium text-night-300 mb-2">Department</label>
+            <select
+              value={departmentFilter}
+              onChange={(e) => {
+                setDepartmentFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-4 py-2 bg-night-800 border border-night-600 rounded text-night-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option>All</option>
+              {allDepartments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Year */}
+          <div>
+            <label className="block text-sm font-medium text-night-300 mb-2">Year</label>
+            <select
+              value={yearFilter}
+              onChange={(e) => {
+                setYearFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-4 py-2 bg-night-800 border border-night-600 rounded text-night-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              <option>All</option>
+              {allYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
-      {/* ─── Table ─── */}
-      <div className="glass rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-night-500">Loading...</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-left">
-                  <th className="px-4 py-3 text-night-400 font-medium">Date</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Time</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Issue</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Room</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Type</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Severity</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Status</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Dept</th>
-                  <th className="px-4 py-3 text-night-400 font-medium">Esc</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((inc) => (
-                  <tr
-                    key={inc.id}
-                    onClick={() => handleSelectIncident(inc)}
-                    className={`border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${
-                      selectedIncident?.id === inc.id ? "bg-brand-500/20" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-night-300 whitespace-nowrap">{inc.incident_date}</td>
-                    <td className="px-4 py-3 text-night-300 font-mono text-xs">{inc.incident_time || "—"}</td>
-                    <td className="px-4 py-3 text-white max-w-[250px] truncate">{inc.title}</td>
-                    <td className="px-4 py-3 text-night-300 font-mono text-xs">{inc.room_code || "—"}</td>
-                    <td className="px-4 py-3 text-night-300 whitespace-nowrap">{inc.incident_type}</td>
+      {/* Table */}
+      <div className="rounded-lg bg-night-900/50 border border-night-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-night-700 bg-night-900">
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('date')}>
+                  Date {sortField === 'date' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('time')}>
+                  Time {sortField === 'time' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('site')}>
+                  Site {sortField === 'site' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('room_number')}>
+                  Room {sortField === 'room_number' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('incident_type')}>
+                  Type {sortField === 'incident_type' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('issue_summary')}>
+                  Issue {sortField === 'issue_summary' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium">Severity</th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium">Escalation</th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('primary_department')}>
+                  Department {sortField === 'primary_department' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('primary_impact')}>
+                  Impact {sortField === 'primary_impact' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+                <th className="px-4 py-3 text-left text-night-300 font-medium cursor-pointer hover:text-night-100" onClick={() => handleSort('root_cause')}>
+                  Root Cause {sortField === 'root_cause' && <span className="text-brand-500">{sortOrder === 'desc' ? 'â' : 'â'}</span>}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedIncidents.length > 0 ? (
+                paginatedIncidents.map((inc, idx) => (
+                  <tr key={idx} className="border-b border-night-700 hover:bg-night-800/30">
+                    <td className="px-4 py-3 text-night-300">{inc.date}</td>
+                    <td className="px-4 py-3 text-night-300">{formatTime(inc.time)}</td>
+                    <td className="px-4 py-3 text-night-300 text-xs">{inc.site}</td>
+                    <td className="px-4 py-3 text-night-50 font-mono font-semibold">{inc.room_number}</td>
+                    <td className="px-4 py-3 text-night-300 text-xs">{inc.incident_type}</td>
+                    <td className="px-4 py-3 text-night-400 text-xs max-w-xs truncate">{inc.issue_summary}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${SEVERITY_BADGE[inc.severity] || ""}`}>
+                      <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${SEVERITY_BADGE[inc.severity as keyof typeof SEVERITY_BADGE]}`}>
                         {inc.severity}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[inc.status] || ""}`}>
-                        {STATUS_LABEL[inc.status] || inc.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-night-400 text-xs">{inc.primary_department || "—"}</td>
-                    <td className="px-4 py-3 text-center">{inc.is_escalated ? "⬆" : ""}</td>
+                    <td className="px-4 py-3 text-night-300 text-xs">{inc.escalation}</td>
+                    <td className="px-4 py-3 text-night-300 text-xs">{inc.primary_department}</td>
+                    <td className="px-4 py-3 text-night-300 text-xs">{inc.primary_impact}</td>
+                    <td className="px-4 py-3 text-night-300 text-xs">{inc.root_cause}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={11} className="px-4 py-8 text-center text-night-400">
+                    No incidents match your filters
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* ─── Detail Panel (Slide-out) ─── */}
-      {selectedIncident && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={handleClosePanel}
-          />
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between rounded-lg bg-night-900/50 border border-night-700 p-4">
+          <button
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-night-800 text-night-300 rounded hover:bg-night-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
 
-          {/* Panel */}
-          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-night-950/95 backdrop-blur-md border-l border-white/10 shadow-2xl z-50 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-white truncate">{selectedIncident.title}</h2>
-              <button
-                onClick={handleClosePanel}
-                className="text-night-400 hover:text-white transition-colors text-xl"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-              {/* Status Badge with Dropdown */}
-              <div>
-                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Status</label>
-                <select
-                  value={incidentStatus}
-                  onChange={(e) => handleStatusChange(e.target.value as "open" | "in_progress" | "resolved" | "closed")}
-                  className={`mt-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-white border border-white/10 bg-night-900 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer ${STATUS_BADGE[incidentStatus] || ""}`}
+          <div className="flex items-center gap-2">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let page = i + 1;
+              if (totalPages > 5 && currentPage > 3) {
+                page = currentPage - 2 + i;
+              }
+              return page <= totalPages ? (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`px-3 py-2 rounded ${
+                    currentPage === page
+                      ? 'bg-brand-500 text-night-900 font-semibold'
+                      : 'bg-night-800 text-night-300 hover:bg-night-700'
+                  }`}
                 >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </div>
-
-              {/* Severity Badge */}
-              <div>
-                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Severity</label>
-                <div className="mt-2">
-                  <span className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium ${SEVERITY_BADGE[selectedIncident.severity] || ""}`}>
-                    {selectedIncident.severity.toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Info Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Date</label>
-                  <p className="mt-1 text-sm text-white">{selectedIncident.incident_date}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Time</label>
-                  <p className="mt-1 text-sm text-white font-mono">{selectedIncident.incident_time}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Room</label>
-                  <p className="mt-1 text-sm text-white font-mono">{selectedIncident.room_code || "—"}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Site</label>
-                  <p className="mt-1 text-sm text-white">{selectedIncident.site || "—"}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Type</label>
-                  <p className="mt-1 text-sm text-white">{selectedIncident.incident_type}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Department</label>
-                  <p className="mt-1 text-sm text-white">{selectedIncident.primary_department || "—"}</p>
-                </div>
-              </div>
-
-              {/* Escalation Status */}
-              <div>
-                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Escalation</label>
-                <p className="mt-1 text-sm text-white">{isEscalated ? "⬆ Escalated" : "— Not escalated"}</p>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Details</label>
-                <p className="mt-2 text-sm text-night-300 leading-relaxed">
-                  {selectedIncident.details || "No additional details provided."}
-                </p>
-              </div>
-
-              {/* Notes Section */}
-              <div className="pt-3 border-t border-white/10">
-                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide block mb-3">Notes</label>
-
-                {/* Existing Notes */}
-                {notes.length > 0 && (
-                  <div className="space-y-2 mb-4 max-h-32 overflow-y-auto">
-                    {notes.map((note) => (
-                      <div key={note.id} className="bg-night-900/50 rounded-lg p-2.5">
-                        <p className="text-xs text-night-400 mb-1">{note.timestamp}</p>
-                        <p className="text-sm text-white">{note.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Add Note */}
-                <div className="space-y-2">
-                  <textarea
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="Add a note..."
-                    className="w-full px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white placeholder:text-night-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
-                    rows={3}
-                  />
-                  <button
-                    onClick={handleAddNote}
-                    disabled={!noteInput.trim()}
-                    className="w-full px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:bg-night-700 disabled:text-night-500 text-white text-sm font-medium transition-colors"
-                  >
-                    Add Note
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions Footer */}
-            <div className="px-6 py-4 border-t border-white/10 space-y-2">
-              <button
-                onClick={handleMarkResolved}
-                className="w-full px-4 py-2.5 rounded-lg bg-green-600/20 hover:bg-green-600/30 text-green-400 text-sm font-medium transition-colors border border-green-500/30"
-              >
-                Mark Resolved
-              </button>
-              <button
-                onClick={handleEscalate}
-                className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border ${
-                  isEscalated
-                    ? "bg-red-600/20 hover:bg-red-600/30 text-red-400 border-red-500/30"
-                    : "bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border-orange-500/30"
-                }`}
-              >
-                {isEscalated ? "🔴 De-escalate" : "⬆ Escalate"}
-              </button>
-            </div>
+                  {page}
+                </button>
+              ) : null;
+            })}
           </div>
-        </>
+
+          <button
+            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 bg-night-800 text-night-300 rounded hover:bg-night-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
       )}
     </div>
   );
