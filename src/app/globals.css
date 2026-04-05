@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+  }
+
+  body {
+    @apply bg-night-950 text-night-50 antialiased;
+  }
+}
+
+@layer utilities {
+  /* Glass morphism for cards on dark backgrounds */
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+
+  /* Subtle glow effect for active/focused elements */
+  .glow-brand {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+  }
+}
