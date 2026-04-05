@@ -6,50 +6,31 @@ import Link from "next/link";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [password, setPassword] = useState("");
-  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const supabase = createClient();
 
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      // Wait briefly for session to be persisted to localStorage
-      // before redirecting to dashboard
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Verify session was set before redirecting
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session) {
-        // Redirect to dashboard
-        window.location.href = "/dashboard";
-      } else {
-        setMessage("Session was not established. Please try again.");
-        setLoading(false);
-      }
-    } catch (err) {
-      setMessage(
-        err instanceof Error ? err.message : "An unexpected error occurred"
-      );
+    if (error) {
+      setMessage(error.message);
       setLoading(false);
+      return;
     }
+
+    // Session is now stored in cookies by @supabase/ssr.
+    // Hard navigate to dashboard — the middleware will pick up the cookies.
+    window.location.href = "/dashboard";
   };
 
   return (
@@ -119,7 +100,7 @@ export default function LoginPage() {
           </form>
 
           {message && (
-            <p className="mt-4 text-sm text-center text-night-300">{message}</p>
+            <p className="mt-4 text-sm text-center text-red-400">{message}</p>
           )}
         </div>
 

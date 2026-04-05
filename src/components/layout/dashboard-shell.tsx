@@ -7,15 +7,38 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { User } from "@supabase/supabase-js";
 
-const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: "grid" },
-  { label: "Log Incident", href: "/dashboard/log", icon: "plus" },
-  { label: "Incidents", href: "/dashboard/incidents", icon: "alert" },
-  { label: "Compensation", href: "/dashboard/compensation", icon: "dollar" },
-  { label: "Room Map", href: "/dashboard/rooms", icon: "map" },
-  { label: "Reports", href: "/dashboard/reports", icon: "chart" },
-  { label: "Import Data", href: "/dashboard/import", icon: "upload" },
-  { label: "Settings", href: "/dashboard/settings", icon: "settings" },
+const navSections = [
+  {
+    title: null,
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: "grid" },
+      { label: "Log Incident", href: "/dashboard/log", icon: "plus" },
+      { label: "Incidents", href: "/dashboard/incidents", icon: "alert" },
+    ],
+  },
+  {
+    title: "Operations",
+    items: [
+      { label: "Room Map", href: "/dashboard/rooms", icon: "map" },
+      { label: "Tasks", href: "/dashboard/tasks", icon: "tasks" },
+      { label: "Departments", href: "/dashboard/departments", icon: "dept" },
+    ],
+  },
+  {
+    title: "Intelligence",
+    items: [
+      { label: "Reports", href: "/dashboard/reports", icon: "chart" },
+      { label: "Daily Briefing", href: "/dashboard/briefing", icon: "email" },
+      { label: "Compensation", href: "/dashboard/compensation", icon: "dollar" },
+    ],
+  },
+  {
+    title: "Admin",
+    items: [
+      { label: "Import Data", href: "/dashboard/import", icon: "upload" },
+      { label: "Settings", href: "/dashboard/settings", icon: "settings" },
+    ],
+  },
 ];
 
 // Simple icon components (will swap for Lucide later)
@@ -29,6 +52,9 @@ function NavIcon({ icon }: { icon: string }) {
     chart: "📊",
     upload: "⬆",
     settings: "⚙",
+    tasks: "☑",
+    dept: "👥",
+    email: "📧",
   };
   return <span className="text-base">{icons[icon] || "•"}</span>;
 }
@@ -71,25 +97,38 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 px-3 py-4 space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-brand-500/10 text-brand-400"
-                      : "text-night-400 hover:text-white hover:bg-white/5"
-                  )}
-                >
-                  <NavIcon icon={item.icon} />
-                  {item.label}
-                </Link>
-              );
-            })}
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+            {navSections.map((section, sIdx) => (
+              <div key={sIdx}>
+                {section.title && (
+                  <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-night-600">
+                    {section.title}
+                  </p>
+                )}
+                {section.items.map((item) => {
+                  const isActive =
+                    pathname === item.href ||
+                    (item.href !== "/dashboard" &&
+                      pathname.startsWith(item.href));
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-brand-500/10 text-brand-400"
+                          : "text-night-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <NavIcon icon={item.icon} />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
 
           {/* User */}
@@ -108,7 +147,7 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
                 className="text-night-500 hover:text-night-300 text-xs"
                 title="Sign out"
               >
-                Exit
+                Sign out
               </button>
             </div>
           </div>

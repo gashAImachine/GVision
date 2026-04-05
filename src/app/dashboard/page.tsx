@@ -7,6 +7,55 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
+// ─── Utilities ───
+type DateRangeType = "7d" | "30d" | "90d" | "12m" | "all";
+
+function generateDemoIncidents(count: number, daysBack: number): any[] {
+  const incidents = [
+    "AC not cooling", "Noise complaint", "WiFi not working", "Smoke alarm triggered",
+    "Towels not replenished", "Guest intoxicated at pool", "Plumbing issue", "Light fixture broken",
+    "TV not working", "Door lock malfunction", "Heating not working", "Water pressure low",
+    "Phone line down", "Bed sheets torn", "Bathroom tiles loose", "Elevator breakdown",
+  ];
+  const types = [
+    "Maintenance", "Housekeeping", "IT", "Noise", "Guest Complaint",
+    "Safety", "Transport", "Guest Behaviour", "Alarm", "Other"
+  ];
+  const severities = ["low", "medium", "high"];
+  const sites = ["East Tower", "West Tower", "Central", "Annex"];
+  const rooms = Array.from({ length: 20 }, (_, i) => `R${String(i + 1).padStart(4, "0")}`);
+
+  const result = [];
+  const now = new Date();
+  for (let i = 0; i < count; i++) {
+    const daysAgo = Math.floor(Math.random() * daysBack);
+    const date = new Date(now);
+    date.setDate(date.getDate() - daysAgo);
+    const hours = Math.floor(Math.random() * 24);
+    const mins = Math.floor(Math.random() * 60);
+    date.setHours(hours, mins, 0);
+
+    result.push({
+      id: `demo-${i}`,
+      date: date.toISOString().split("T")[0],
+      time: `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`,
+      site: sites[Math.floor(Math.random() * sites.length)],
+      room: rooms[Math.floor(Math.random() * rooms.length)],
+      type: types[Math.floor(Math.random() * types.length)],
+      title: incidents[Math.floor(Math.random() * incidents.length)],
+      severity: severities[Math.floor(Math.random() * severities.length)],
+      escalated: Math.random() > 0.85,
+      department: ["Maintenance", "Housekeeping", "IT", "Security", "Front Office"][Math.floor(Math.random() * 5)],
+    });
+  }
+  return result.sort((a, b) => new Date(b.date + " " + b.time).getTime() - new Date(a.date + " " + a.time).getTime());
+}
+
+function getDateRangeDays(range: DateRangeType): number {
+  const map: Record<DateRangeType, number> = { "7d": 7, "30d": 30, "90d": 90, "12m": 365, "all": 999 };
+  return map[range];
+}
+
 // ─── Demo data (used when Supabase has no records yet) ───
 const DEMO_MONTHLY = [
   { month: "Jul", incidents: 142, high: 12, escalated: 18 },
@@ -71,10 +120,24 @@ const severityBadge: Record<string, string> = {
 export default function DashboardPage() {
   const supabase = useSupabase();
   const [isDemo, setIsDemo] = useState(true);
+  const [selectedRange, setSelectedRange] = useState<DateRangeType>("30d");
   const [totalIncidents, setTotalIncidents] = useState(2438);
+  const [prevTotalIncidents, setPrevTotalIncidents] = useState(2100);
   const [openCases, setOpenCases] = useState(68);
+  const [prevOpenCases, setPrevOpenCases] = useState(74);
   const [highSeverity, setHighSeverity] = useState(251);
+  const [prevHighSeverity, setPrevHighSeverity] = useState(198);
   const [escalationRate] = useState(12.8);
+  const [prevEscalationRate] = useState(11.2);
+  const [demoIncidents, setDemoIncidents] = useState<any[]>([]);
+  const [searchIncidents, setSearchIncidents] = useState("");
+
+  // Generate demo incidents based on selected range
+  useEffect(() => {
+    const days = getDateRangeDays(selectedRange);
+    const incidents = generateDemoIncidents(50, days);
+    setDemoIncidents(incidents);
+  }, [selectedRange]);
 
   // Try fetching real data; fall back to demo
   useEffect(() => {
@@ -110,6 +173,29 @@ export default function DashboardPage() {
     loadStats();
   }, [supabase]);
 
+  // Calculate trend percentage and direction
+  const calcTrend = (current: number, previous: number): { pct: string; isUp: boolean } => {
+    if (previous === 0) return { pct: "0%", isUp: false };
+    const change = ((current - previous) / previous) * 100;
+    return {
+      pct: Math.abs(change).toFixed(1),
+      isUp: change > 0,
+    };
+  };
+
+  const incidentsTrend = calcTrend(totalIncidents, prevTotalIncidents);
+  const openCasesTrend = calcTrend(openCases, prevOpenCases);
+  const highSeverityTrend = calcTrend(highSeverity, prevHighSeverity);
+  const escalationTrend = calcTrend(escalationRate, prevEscalationRate);
+
+  // Filter incidents by search
+  const filteredIncidents = demoIncidents.filter((inc) =>
+    inc.title.toLowerCase().includes(searchIncidents.toLowerCase()) ||
+    inc.room.toLowerCase().includes(searchIncidents.toLowerCase()) ||
+    inc.type.toLowerCase().includes(searchIncidents.toLowerCase()) ||
+    inc.site.toLowerCase().includes(searchIncidents.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       {/* Demo banner */}
@@ -119,24 +205,87 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── KPI Cards ─── */}
+      {/* ─── Date Range Filter ─── */}
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { key: "7d" as DateRangeType, label: "7 Days" },
+          { key: "30d" as DateRangeType, label: "30 Days" },
+          { key: "90d" as DateRangeType, label: "90 Days" },
+          { key: "12m" as DateRangeType, label: "12 Months" },
+          { key: "all" as DateRangeType, label: "All Time" },
+        ].map((range) => (
+          <button
+            key={range.key}
+            onClick={() => setSelectedRange(range.key)}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+              selectedRange === range.key
+                ? "bg-brand-500 text-white"
+                : "bg-night-900/50 text-night-300 border border-night-700 hover:bg-night-800/50"
+            }`}
+          >
+            {range.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ─── KPI Cards with Trends ─── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="glass rounded-xl p-5">
-          <p className="text-sm text-night-400">Total Incidents</p>
-          <p className="text-3xl font-bold text-white mt-1">{totalIncidents.toLocaleString()}</p>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm text-night-400">Total Incidents</p>
+              <p className="text-3xl font-bold text-white mt-1">{totalIncidents.toLocaleString()}</p>
+            </div>
+            <div className="text-right">
+              <span className={`text-sm font-medium ${incidentsTrend.isUp ? "text-green-400" : "text-red-400"}`}>
+                {incidentsTrend.isUp ? "↑" : "↓"} {incidentsTrend.pct}%
+              </span>
+            </div>
+          </div>
         </div>
+
         <div className="glass rounded-xl p-5">
-          <p className="text-sm text-night-400">Open Cases</p>
-          <p className="text-3xl font-bold text-orange-400 mt-1">{openCases}</p>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm text-night-400">Open Cases</p>
+              <p className="text-3xl font-bold text-orange-400 mt-1">{openCases}</p>
+            </div>
+            <div className="text-right">
+              <span className={`text-sm font-medium ${openCasesTrend.isUp ? "text-red-400" : "text-green-400"}`}>
+                {openCasesTrend.isUp ? "↑" : "↓"} {openCasesTrend.pct}%
+              </span>
+            </div>
+          </div>
         </div>
+
         <div className="glass rounded-xl p-5">
-          <p className="text-sm text-night-400">High Severity</p>
-          <p className="text-3xl font-bold text-red-400 mt-1">{highSeverity}</p>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm text-night-400">High Severity</p>
+              <p className="text-3xl font-bold text-red-400 mt-1">{highSeverity}</p>
+            </div>
+            <div className="text-right">
+              <span className={`text-sm font-medium ${highSeverityTrend.isUp ? "text-red-400" : "text-green-400"}`}>
+                {highSeverityTrend.isUp ? "↑" : "↓"} {highSeverityTrend.pct}%
+              </span>
+            </div>
+          </div>
         </div>
+
         <div className="glass rounded-xl p-5">
-          <p className="text-sm text-night-400">Escalation Rate</p>
-          <p className="text-3xl font-bold text-yellow-400 mt-1">{escalationRate}%</p>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <p className="text-sm text-night-400">Escalation Rate</p>
+              <p className="text-3xl font-bold text-yellow-400 mt-1">{escalationRate}%</p>
+            </div>
+            <div className="text-right">
+              <span className={`text-sm font-medium ${escalationTrend.isUp ? "text-red-400" : "text-green-400"}`}>
+                {escalationTrend.isUp ? "↑" : "↓"} {escalationTrend.pct}%
+              </span>
+            </div>
+          </div>
         </div>
+
         <div className="glass rounded-xl p-5">
           <p className="text-sm text-night-400">Compensation</p>
           <p className="text-3xl font-bold text-brand-400 mt-1">${DEMO_COMP.total.toLocaleString()}</p>
@@ -273,6 +422,68 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ─── Last 50 Incidents ─── */}
+      <div className="glass rounded-xl p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+          <h2 className="text-sm font-medium text-night-300">Last 50 Incidents</h2>
+          <input
+            type="text"
+            placeholder="Search by room, type, site, or issue..."
+            value={searchIncidents}
+            onChange={(e) => setSearchIncidents(e.target.value)}
+            className="px-3 py-1.5 text-sm rounded-lg bg-night-900/50 border border-night-700 text-white placeholder-night-500 focus:outline-none focus:border-brand-500"
+          />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left">
+                <th className="pb-2 px-2 text-night-400 font-medium">Date</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Time</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Site</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Room</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Type</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Issue</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Severity</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Escalation</th>
+                <th className="pb-2 px-2 text-night-400 font-medium">Department</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredIncidents.slice(0, 50).map((inc) => (
+                <tr key={inc.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                  <td className="py-2.5 px-2 text-night-300 font-mono text-xs">{inc.date}</td>
+                  <td className="py-2.5 px-2 text-night-300 font-mono text-xs">{inc.time}</td>
+                  <td className="py-2.5 px-2 text-night-300 text-xs">{inc.site}</td>
+                  <td className="py-2.5 px-2 text-white font-mono text-xs">{inc.room}</td>
+                  <td className="py-2.5 px-2 text-night-300 text-xs">{inc.type}</td>
+                  <td className="py-2.5 px-2 text-white text-xs max-w-xs truncate">{inc.title}</td>
+                  <td className="py-2.5 px-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium inline-block ${severityBadge[inc.severity]}`}>
+                      {inc.severity}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-2 text-center">
+                    {inc.escalated ? <span className="text-xl">⚠️</span> : <span className="text-night-600">·</span>}
+                  </td>
+                  <td className="py-2.5 px-2 text-night-300 text-xs">{inc.department}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {filteredIncidents.length === 0 && (
+          <div className="py-8 text-center text-night-400">
+            No incidents match your search.
+          </div>
+        )}
+        {filteredIncidents.length > 0 && (
+          <div className="mt-3 text-xs text-night-500">
+            Showing {Math.min(50, filteredIncidents.length)} of {filteredIncidents.length} incidents
+          </div>
+        )}
       </div>
     </div>
   );

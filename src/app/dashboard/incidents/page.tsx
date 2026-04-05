@@ -3,8 +3,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSupabase } from "@/hooks/use-supabase";
 
+type Incident = {
+  id: string;
+  incident_date: string;
+  incident_time: string;
+  title: string;
+  room_code: string;
+  incident_type: string;
+  severity: "low" | "medium" | "high";
+  status: "open" | "in_progress" | "resolved" | "closed";
+  is_escalated: boolean;
+  primary_department: string;
+  details?: string;
+  notes?: Array<{ id: string; text: string; timestamp: string }>;
+  site?: string;
+};
+
 // ─── Demo incidents (shown when no real data yet) ───
-const DEMO_INCIDENTS = Array.from({ length: 40 }, (_, i) => {
+const DEMO_INCIDENTS: Incident[] = Array.from({ length: 40 }, (_, i) => {
   const types = ["Maintenance", "Housekeeping", "IT", "Noise", "Safety", "Guest Behaviour", "Guest dissatisfaction", "Transport", "Alarm", "Other"];
   const severities: Array<"low" | "medium" | "high"> = ["low", "medium", "high"];
   const statuses: Array<"open" | "in_progress" | "resolved" | "closed"> = ["open", "in_progress", "resolved", "closed"];
@@ -35,6 +51,12 @@ const DEMO_INCIDENTS = Array.from({ length: 40 }, (_, i) => {
     status: stat,
     is_escalated: i % 5 === 0,
     primary_department: ["Maintenance", "Housekeeping", "IT", "Security", "Front Office", "Transport"][i % 6],
+    site: ["Main Building", "Wing A", "Wing B", "Annex"][i % 4],
+    details: `Incident reported on ${month}/${day} at ${hour}:${min.toString().padStart(2, "0")}. Details: ${titles[i % titles.length]} reported in room ${rooms[i % rooms.length]}. Requires attention from ${["Maintenance", "Housekeeping", "IT", "Security", "Front Office", "Transport"][i % 6]}.`,
+    notes: [
+      { id: `note-${i}-1`, text: "Initial report received", timestamp: "2026-04-05 10:30" },
+      { id: `note-${i}-2`, text: "Staff assigned to investigate", timestamp: "2026-04-05 10:45" },
+    ],
   };
 });
 
@@ -60,7 +82,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function IncidentsPage() {
   const supabase = useSupabase();
-  const [incidents, setIncidents] = useState(DEMO_INCIDENTS);
+  const [incidents, setIncidents] = useState<Incident[]>(DEMO_INCIDENTS);
   const [isDemo, setIsDemo] = useState(true);
   const [loading, setLoading] = useState(false);
 
@@ -69,6 +91,13 @@ export default function IncidentsPage() {
   const [filterSeverity, setFilterSeverity] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
+
+  // Detail panel
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [incidentStatus, setIncidentStatus] = useState<"open" | "in_progress" | "resolved" | "closed">("open");
+  const [notes, setNotes] = useState<Array<{ id: string; text: string; timestamp: string }>>([]);
+  const [noteInput, setNoteInput] = useState("");
+  const [isEscalated, setIsEscalated] = useState(false);
 
   const loadIncidents = useCallback(async () => {
     try {
@@ -115,8 +144,96 @@ export default function IncidentsPage() {
 
   const types = [...new Set(incidents.map((i) => i.incident_type))].sort();
 
+  // Handle opening detail panel
+  const handleSelectIncident = (incident: Incident) => {
+    setSelectedIncident(incident);
+    setIncidentStatus(incident.status);
+    setNotes(incident.notes || []);
+    setIsEscalated(incident.is_escalated);
+    setNoteInput("");
+  };
+
+  // Handle closing detail panel
+  const handleClosePanel = () => {
+    setSelectedIncident(null);
+    setNoteInput("");
+  };
+
+  // Handle adding a note
+  const handleAddNote = () => {
+    if (!noteInput.trim()) return;
+
+    const now = new Date();
+    const timestamp = now.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const newNote = {
+      id: `note-${Date.now()}`,
+      text: noteInput,
+      timestamp,
+    };
+
+    setNotes([...notes, newNote]);
+    setNoteInput("");
+
+    // Update the incident in the list
+    if (selectedIncident) {
+      const updated = {
+        ...selectedIncident,
+        notes: [...notes, newNote],
+      };
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === selectedIncident.id ? updated : inc))
+      );
+      setSelectedIncident(updated);
+    }
+  };
+
+  // Handle status change
+  const handleStatusChange = (newStatus: "open" | "in_progress" | "resolved" | "closed") => {
+    setIncidentStatus(newStatus);
+
+    if (selectedIncident) {
+      const updated = {
+        ...selectedIncident,
+        status: newStatus,
+      };
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === selectedIncident.id ? updated : inc))
+      );
+      setSelectedIncident(updated);
+    }
+  };
+
+  // Handle mark resolved
+  const handleMarkResolved = () => {
+    handleStatusChange("resolved");
+  };
+
+  // Handle escalate
+  const handleEscalate = () => {
+    const newEscalated = !isEscalated;
+    setIsEscalated(newEscalated);
+
+    if (selectedIncident) {
+      const updated = {
+        ...selectedIncident,
+        is_escalated: newEscalated,
+      };
+      setIncidents((prev) =>
+        prev.map((inc) => (inc.id === selectedIncident.id ? updated : inc))
+      );
+      setSelectedIncident(updated);
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-white">Incidents</h1>
@@ -196,7 +313,13 @@ export default function IncidentsPage() {
               </thead>
               <tbody>
                 {filtered.map((inc) => (
-                  <tr key={inc.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                  <tr
+                    key={inc.id}
+                    onClick={() => handleSelectIncident(inc)}
+                    className={`border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${
+                      selectedIncident?.id === inc.id ? "bg-brand-500/20" : ""
+                    }`}
+                  >
                     <td className="px-4 py-3 text-night-300 whitespace-nowrap">{inc.incident_date}</td>
                     <td className="px-4 py-3 text-night-300 font-mono text-xs">{inc.incident_time || "—"}</td>
                     <td className="px-4 py-3 text-white max-w-[250px] truncate">{inc.title}</td>
@@ -221,6 +344,156 @@ export default function IncidentsPage() {
           </div>
         )}
       </div>
+
+      {/* ─── Detail Panel (Slide-out) ─── */}
+      {selectedIncident && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={handleClosePanel}
+          />
+
+          {/* Panel */}
+          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-night-950/95 backdrop-blur-md border-l border-white/10 shadow-2xl z-50 flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white truncate">{selectedIncident.title}</h2>
+              <button
+                onClick={handleClosePanel}
+                className="text-night-400 hover:text-white transition-colors text-xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+              {/* Status Badge with Dropdown */}
+              <div>
+                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Status</label>
+                <select
+                  value={incidentStatus}
+                  onChange={(e) => handleStatusChange(e.target.value as "open" | "in_progress" | "resolved" | "closed")}
+                  className={`mt-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-white border border-white/10 bg-night-900 focus:outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer ${STATUS_BADGE[incidentStatus] || ""}`}
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+
+              {/* Severity Badge */}
+              <div>
+                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Severity</label>
+                <div className="mt-2">
+                  <span className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium ${SEVERITY_BADGE[selectedIncident.severity] || ""}`}>
+                    {selectedIncident.severity.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Date</label>
+                  <p className="mt-1 text-sm text-white">{selectedIncident.incident_date}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Time</label>
+                  <p className="mt-1 text-sm text-white font-mono">{selectedIncident.incident_time}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Room</label>
+                  <p className="mt-1 text-sm text-white font-mono">{selectedIncident.room_code || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Site</label>
+                  <p className="mt-1 text-sm text-white">{selectedIncident.site || "—"}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Type</label>
+                  <p className="mt-1 text-sm text-white">{selectedIncident.incident_type}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Department</label>
+                  <p className="mt-1 text-sm text-white">{selectedIncident.primary_department || "—"}</p>
+                </div>
+              </div>
+
+              {/* Escalation Status */}
+              <div>
+                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Escalation</label>
+                <p className="mt-1 text-sm text-white">{isEscalated ? "⬆ Escalated" : "— Not escalated"}</p>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide">Details</label>
+                <p className="mt-2 text-sm text-night-300 leading-relaxed">
+                  {selectedIncident.details || "No additional details provided."}
+                </p>
+              </div>
+
+              {/* Notes Section */}
+              <div className="pt-3 border-t border-white/10">
+                <label className="text-xs font-semibold text-night-400 uppercase tracking-wide block mb-3">Notes</label>
+
+                {/* Existing Notes */}
+                {notes.length > 0 && (
+                  <div className="space-y-2 mb-4 max-h-32 overflow-y-auto">
+                    {notes.map((note) => (
+                      <div key={note.id} className="bg-night-900/50 rounded-lg p-2.5">
+                        <p className="text-xs text-night-400 mb-1">{note.timestamp}</p>
+                        <p className="text-sm text-white">{note.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Note */}
+                <div className="space-y-2">
+                  <textarea
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="Add a note..."
+                    className="w-full px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white placeholder:text-night-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+                    rows={3}
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={!noteInput.trim()}
+                    className="w-full px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:bg-night-700 disabled:text-night-500 text-white text-sm font-medium transition-colors"
+                  >
+                    Add Note
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions Footer */}
+            <div className="px-6 py-4 border-t border-white/10 space-y-2">
+              <button
+                onClick={handleMarkResolved}
+                className="w-full px-4 py-2.5 rounded-lg bg-green-600/20 hover:bg-green-600/30 text-green-400 text-sm font-medium transition-colors border border-green-500/30"
+              >
+                Mark Resolved
+              </button>
+              <button
+                onClick={handleEscalate}
+                className={`w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border ${
+                  isEscalated
+                    ? "bg-red-600/20 hover:bg-red-600/30 text-red-400 border-red-500/30"
+                    : "bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border-orange-500/30"
+                }`}
+              >
+                {isEscalated ? "🔴 De-escalate" : "⬆ Escalate"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
+import { ChevronDown } from "lucide-react";
 
 // ─── Demo report data ───
 const MONTHLY_COMPARISON = [
@@ -63,14 +64,220 @@ type ReportTab = "executive" | "rooms" | "compensation" | "time";
 
 export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>("executive");
+  const [emailExpanded, setEmailExpanded] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState("");
+
+  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  // ─── Export Helpers ───
+  const executiveBrief = `Key Findings:
+
+1. Maintenance is the #1 incident type at 25.6% of all incidents. AC issues alone account for 142 cases across 89 unique rooms.
+
+2. 8 hot-spot rooms have 4+ incidents each and need targeted intervention — primarily on Floors 3, 5, 8, 12, and 14.
+
+3. The escalation rate is 12.8%, with most escalations going to AH Maintenance and AH Security during overnight hours.
+
+4. 51% of incidents are fully controllable by the Resort Duty Manager, suggesting strong frontline capability with room for improvement on the remaining 49%.
+
+5. Compensation totals $14,320 across 47 cases (avg $304.68). Room credits are the most common form at 40% of total compensation value.`;
+
+  const generateCSV = () => {
+    const headers = ["Room", "Incidents", "Top Issues"];
+    const rows = TOP_ROOMS.map(r => [r.room, r.count, r.issues]);
+    const csv = [headers, ...rows].map(r => r.map(cell => `"${cell}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `g-vision-incidents-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const generateTextReport = () => {
+    const report = `G-VISION OPERATIONAL REPORT
+Generated: ${today}
+
+EXECUTIVE SUMMARY
+${executiveBrief}
+
+KEY METRICS
+Total Incidents (Q1 2026): 674
+Total Incidents (Q1 2025): 535
+Year-on-Year Growth: 26%
+Escalation Rate: 12.8%
+RDM Controllable: 51% (1,245 cases)
+
+TOP 8 HOT-SPOT ROOMS
+${TOP_ROOMS.map((r, i) => `${i + 1}. ${r.room} - ${r.count} incidents (${r.issues})`).join("\n")}
+
+ROOT CAUSE BREAKDOWN
+${ROOT_CAUSES.map(r => `${r.name}: ${r.value} cases`).join("\n")}
+
+COMPENSATION SUMMARY
+Total Compensation Given: $14,320
+Total Cases: 47
+Average Per Case: $304.68
+
+INCIDENT TIME DISTRIBUTION
+Peak Hours: 22:00 - 01:00
+Highest Peak: 23:00 (247 incidents)
+
+CONTROLLABILITY STATUS
+RDM Resolved: 1,245 cases (51%)
+Escalated: 698 cases (29%)
+Beyond RDM: 495 cases (20%)
+
+---
+Report compiled for Hamilton Island Enterprises
+Resort Duty Manager Analysis`;
+    const blob = new Blob([report], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `g-vision-report-${new Date().toISOString().split("T")[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copySummaryToClipboard = () => {
+    navigator.clipboard.writeText(executiveBrief).then(() => {
+      setCopyFeedback("Copied!");
+      setTimeout(() => setCopyFeedback(""), 2000);
+    });
+  };
+
+  const emailDraft = {
+    subject: `G-Vision | Operational Summary — ${today}`,
+    body: `Hi Leadership,
+
+Please see the G-Vision operational summary for ${today}:
+
+KEY METRICS
+• Total Incidents: 674 (YoY +26%)
+• High Severity Escalations: 12.8%
+• RDM Controllable: 51% (1,245 cases)
+• Top Incident Type: Maintenance (25.6%)
+• Total Compensation: $14,320
+
+TOP 3 FINDINGS
+1. Maintenance is the #1 incident type at 25.6% of all incidents. AC issues alone account for 142 cases across 89 unique rooms.
+
+2. 8 hot-spot rooms have 4+ incidents each and need targeted intervention — primarily on Floors 3, 5, 8, 12, and 14.
+
+3. The escalation rate is 12.8%, with most escalations going to AH Maintenance and AH Security during overnight hours.
+
+Best regards,
+Resort Duty Manager
+Hamilton Island Enterprises`,
+  };
+
+  const copyEmailToClipboard = () => {
+    const fullEmail = `Subject: ${emailDraft.subject}\n\n${emailDraft.body}`;
+    navigator.clipboard.writeText(fullEmail).then(() => {
+      setCopyFeedback("Email copied!");
+      setTimeout(() => setCopyFeedback(""), 2000);
+    });
+  };
+
+  const downloadEmail = () => {
+    const fullEmail = `Subject: ${emailDraft.subject}\n\n${emailDraft.body}`;
+    const blob = new Blob([fullEmail], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gm-email-${new Date().toISOString().split("T")[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Reports</h1>
-        <p className="text-night-400 mt-1">
-          Executive briefings and operational analysis (demo data)
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">Reports</h1>
+            <p className="text-night-400 mt-1">
+              Executive briefings and operational analysis (demo data)
+            </p>
+          </div>
+          {/* ─── Export Buttons ─── */}
+          <div className="flex gap-2 flex-wrap justify-end">
+            <button
+              onClick={copySummaryToClipboard}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white/5 text-night-300 hover:bg-white/10 transition-colors flex items-center gap-2"
+              title="Copy Executive Brief to clipboard"
+            >
+              📋 Copy Summary
+            </button>
+            <button
+              onClick={generateCSV}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white/5 text-night-300 hover:bg-white/10 transition-colors flex items-center gap-2"
+              title="Download incident data as CSV"
+            >
+              ⬇️ CSV
+            </button>
+            <button
+              onClick={generateTextReport}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white/5 text-night-300 hover:bg-white/10 transition-colors flex items-center gap-2"
+              title="Download formatted report as text"
+            >
+              ⬇️ Report
+            </button>
+          </div>
+        </div>
+        {copyFeedback && (
+          <p className="text-xs text-green-400 mt-2">{copyFeedback}</p>
+        )}
+      </div>
+
+      {/* ─── GM Email Draft ─── */}
+      <div className="glass rounded-xl p-6">
+        <button
+          onClick={() => setEmailExpanded(!emailExpanded)}
+          className="w-full flex items-center justify-between hover:opacity-80 transition-opacity"
+        >
+          <h2 className="text-lg font-semibold text-white">📧 GM Summary Email Draft</h2>
+          <ChevronDown
+            size={20}
+            className={`text-night-400 transition-transform ${emailExpanded ? "rotate-180" : ""}`}
+          />
+        </button>
+        {emailExpanded && (
+          <div className="mt-4 space-y-4">
+            <div className="bg-night-900 rounded-lg p-4 space-y-3">
+              <div>
+                <p className="text-xs font-medium text-night-400 mb-1">To:</p>
+                <p className="text-sm text-night-300">management@hamiltonisland.com</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-night-400 mb-1">Subject:</p>
+                <p className="text-sm text-white font-mono">{emailDraft.subject}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-night-400 mb-1">Message:</p>
+                <div className="text-sm text-night-200 font-mono whitespace-pre-wrap bg-night-950 rounded p-3 max-h-64 overflow-y-auto">
+                  {emailDraft.body}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={copyEmailToClipboard}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
+              >
+                📋 Copy to Clipboard
+              </button>
+              <button
+                onClick={downloadEmail}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-white/5 text-night-300 hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
+              >
+                ⬇️ Download .txt
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Tab selector ─── */}
