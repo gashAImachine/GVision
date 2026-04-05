@@ -15,21 +15,46 @@ export default function DashboardLayout({
 
   useEffect(() => {
     const supabase = createClient();
+    let isMounted = true;
 
-    // Listen for auth state changes
+    // First, check if there's an existing session in localStorage
+    const checkExistingSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (isMounted) {
+        if (session?.user) {
+          setUser(session.user);
+        }
+        setLoading(false);
+      }
+    };
+
+    // Initial check for existing session
+    checkExistingSession();
+
+    // Listen for auth state changes (e.g., sign outs, token refreshes)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+
       if (session?.user) {
         setUser(session.user);
+        setLoading(false);
       } else {
         // Not authenticated — redirect to login
+        setUser(null);
+        setLoading(false);
         window.location.href = "/auth/login";
       }
-      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (loading) {
@@ -40,7 +65,13 @@ export default function DashboardLayout({
     );
   }
 
-  if (!user) return null;
+  if (!user) {
+    // If not loading but no user, redirect to login
+    if (typeof window !== "undefined") {
+      window.location.href = "/auth/login";
+    }
+    return null;
+  }
 
   return <DashboardShell user={user}>{children}</DashboardShell>;
 }

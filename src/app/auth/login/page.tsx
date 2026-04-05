@@ -16,17 +16,39 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setMessage(error.message);
+      if (error) {
+        setMessage(error.message);
+        setLoading(false);
+        return;
+      }
+
+      // Wait briefly for session to be persisted to localStorage
+      // before redirecting to dashboard
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Verify session was set before redirecting
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        // Redirect to dashboard
+        window.location.href = "/dashboard";
+      } else {
+        setMessage("Session was not established. Please try again.");
+        setLoading(false);
+      }
+    } catch (err) {
+      setMessage(
+        err instanceof Error ? err.message : "An unexpected error occurred"
+      );
       setLoading(false);
-    } else {
-      // Hard redirect to ensure cookies are sent with the new page request
-      window.location.href = "/dashboard";
     }
   };
 
