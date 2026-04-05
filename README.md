@@ -1,6 +1,6 @@
-# Night Eye — Operational Intelligence for Hotels
+# G-Vision — Operational Intelligence for Hotels
 
-Night Eye transforms incident records into actionable intelligence for hotel operations teams. Real-time dashboards, room intelligence maps, and executive briefings.
+G-Vision transforms incident records into actionable intelligence for hotel operations teams. Real-time dashboards, room intelligence maps, and executive briefings — built for around-the-clock usage across every shift.
 
 ## Tech Stack
 

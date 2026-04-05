@@ -8,9 +8,9 @@ export default function LandingPage() {
         <nav className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">NE</span>
+              <span className="text-white font-bold text-sm">GV</span>
             </div>
-            <span className="text-lg font-semibold text-white">Night Eye</span>
+            <span className="text-lg font-semibold text-white">G-Vision</span>
           </div>
           <Link
             href="/auth/login"
@@ -30,15 +30,15 @@ export default function LandingPage() {
           </div>
 
           <h1 className="text-5xl sm:text-6xl font-bold text-white leading-tight mb-6">
-            See what happens
+            Intelligence that works
             <br />
-            <span className="text-brand-400">after dark.</span>
+            <span className="text-brand-400">around the clock.</span>
           </h1>
 
           <p className="text-lg text-night-300 max-w-2xl mx-auto mb-10">
-            Night Eye transforms incident records into actionable intelligence
+            G-Vision transforms incident records into actionable intelligence
             for hotel operations teams. Real-time dashboards, room intelligence
-            maps, and executive briefings — built for resort duty managers who
+            maps, and executive briefings — built for duty managers who
             need answers, not spreadsheets.
           </p>
 
@@ -62,7 +62,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-white/10 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between text-sm text-night-500">
-          <p>&copy; {new Date().getFullYear()} Night Eye. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} G-Vision. All rights reserved.</p>
           <p>Built for hotel operations teams.</p>
         </div>
       </footer>

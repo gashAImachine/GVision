@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a date for display in the Night Eye UI */
+/** Format a date for display in the G-Vision UI */
 export function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString("en-AU", {
     day: "numeric",
@@ -32,7 +32,7 @@ export const severityColors = {
   low: "text-green-500 bg-green-500/10 border-green-500/20",
 } as const;
 
-/** Incident type icons (matches Night Eye categories) */
+/** Incident type icons (matches G-Vision categories) */
 export const incidentTypeLabels: Record<string, string> = {
   noise: "Noise Complaint",
   maintenance: "Maintenance",

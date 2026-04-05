@@ -36,9 +36,9 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-10 h-10 rounded-lg bg-brand-500 flex items-center justify-center">
-            <span className="text-white font-bold">NE</span>
+            <span className="text-white font-bold">GV</span>
           </div>
-          <span className="text-xl font-semibold text-white">Night Eye</span>
+          <span className="text-xl font-semibold text-white">G-Vision</span>
         </div>
 
         {/* Login card */}

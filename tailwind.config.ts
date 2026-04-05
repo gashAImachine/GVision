@@ -10,7 +10,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Night Eye brand palette — dark operational theme
+        // G-Vision brand palette — dark operational theme
         brand: {
           50: "#eef2ff",
           100: "#e0e7ff",

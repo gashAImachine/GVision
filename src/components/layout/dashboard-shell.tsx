@@ -9,9 +9,12 @@ import type { User } from "@supabase/supabase-js";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: "grid" },
+  { label: "Log Incident", href: "/dashboard/log", icon: "plus" },
   { label: "Incidents", href: "/dashboard/incidents", icon: "alert" },
+  { label: "Compensation", href: "/dashboard/compensation", icon: "dollar" },
   { label: "Room Map", href: "/dashboard/rooms", icon: "map" },
   { label: "Reports", href: "/dashboard/reports", icon: "chart" },
+  { label: "Import Data", href: "/dashboard/import", icon: "upload" },
   { label: "Settings", href: "/dashboard/settings", icon: "settings" },
 ];
 
@@ -19,9 +22,12 @@ const navItems = [
 function NavIcon({ icon }: { icon: string }) {
   const icons: Record<string, string> = {
     grid: "⊞",
+    plus: "＋",
     alert: "⚡",
+    dollar: "💰",
     map: "◫",
     chart: "📊",
+    upload: "⬆",
     settings: "⚙",
   };
   return <span className="text-base">{icons[icon] || "•"}</span>;
@@ -56,10 +62,10 @@ export function DashboardShell({ user, children }: DashboardShellProps) {
           <div className="px-6 py-5 border-b border-white/10">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">NE</span>
+                <span className="text-white font-bold text-sm">GV</span>
               </div>
               <span className="text-lg font-semibold text-white">
-                Night Eye
+                G-Vision
               </span>
             </div>
           </div>
