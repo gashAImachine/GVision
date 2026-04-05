@@ -10,22 +10,22 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const supabase = createClient();
 
+  const [password, setPassword] = useState("");
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage(null);
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
+      password,
     });
 
     if (error) {
       setMessage(error.message);
     } else {
-      setMessage("Check your email for a magic link to sign in.");
+      window.location.href = "/dashboard";
     }
     setLoading(false);
   };
@@ -47,7 +47,7 @@ export default function LoginPage() {
             Sign in to your account
           </h1>
           <p className="text-sm text-night-400 mb-6">
-            Enter your email to receive a magic link.
+            Enter your credentials to sign in.
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -69,12 +69,30 @@ export default function LoginPage() {
               />
             </div>
 
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-night-300 mb-1.5"
+              >
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+                className="w-full px-3 py-2 rounded-lg bg-night-900 border border-white/10 text-white placeholder:text-night-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
+              />
+            </div>
+
             <button
               type="submit"
               disabled={loading}
               className="w-full px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
             >
-              {loading ? "Sending..." : "Send Magic Link"}
+              {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
 
